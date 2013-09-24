@@ -1,0 +1,29 @@
+#!/bin/sh
+
+EMPLOYEES=$HOME/etc/cmp/staff
+OUTPUT_DIR="$HOME/Box Documents"
+
+year=`date +%Y`
+
+while read employee
+do
+    oldIFS="$IFS"
+    IFS=:
+    set -- $employee
+    username=$1
+    full_name=$2
+    title=$3
+    IFS=$oldIFS
+
+    input_file=$username-$year.md
+    output_file=$username-$year.docx
+
+    if [ $input_file -nt $output_file ]
+    then
+        echo publishing $username 1>&2
+        iconv -t utf-8 $input_file \
+          | pandoc -f markdown+definition_lists+fancy_lists+pandoc_title_block \
+                   -t docx \
+                   -o $output_file
+    fi
+done < $EMPLOYEES

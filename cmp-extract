@@ -1,0 +1,73 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+package HTML::TreeBuilder::XPath::TextNode;
+
+sub toString { shift->string_value(@_) }
+
+package main;
+
+use HTML::TreeBuilder;
+use HTML::TreeBuilder::XPath;
+use Readonly;
+
+Readonly my $CMP_WEB      => 'Main';
+Readonly my $CMP_TOPIC    => "$CMP_WEB.UisoCareerManagementPlans";
+Readonly my $WIKI_BIN     => '/var/www/wiki.uiso.iu.edu/htdocs/bin';
+Readonly my $VIEW_COMMAND => "perl -T -I$WIKI_BIN $WIKI_BIN/view";
+
+MAIN: {
+
+    my $user = $ARGV[0] or die "usage: $0 username\n";
+
+    my $list_content = `$VIEW_COMMAND -topic $CMP_TOPIC`;
+
+    my $list_tree = HTML::TreeBuilder->new_from_content($list_content);
+
+    my $doctype_node = $list_tree->attr('_decl');
+    my $html_node    = $list_tree->look_down( _tag => 'html' );
+    my $head_node    = $html_node->look_down( _tag => 'head' );
+    my $type_node    = $head_node->look_down( _tag => 'meta',
+                                              'http-equiv' => 'Content-Type' );
+    my $body_node    = $html_node->look_down( _tag => 'body' );
+
+    print join "\n", $doctype_node->starttag(), $html_node->starttag(),
+                     $head_node->starttag(), '<title></title',
+                     $type_node->starttag(), $head_node->endtag(),
+                     $body_node->starttag(), q{};
+
+    my $last_year = (localtime)[5] + 1899;
+    my $status_re = qr{^\s*$last_year Status\s*$}o;
+
+    my $status_sub = sub {
+        return 0 if $_[0]->attr('_tag') !~ /^h[2-6]$/i;
+
+        my $content_array_ref = $_[0]->attr('_content') or return 0;
+
+        foreach my $content (@$content_array_ref) {
+            return 1 if $content =~ qr/2012 status/i;
+        }
+        return 0;
+    };
+    my $user_node = $body_node->look_down( id => $ARGV[0], _tag => 'div' );
+    foreach my $list_node ( $user_node->look_down( id => undef,
+                                                   _tag => 'div' ) ) {
+        my $topic = $list_node->as_trimmed_text();
+        print "<h2>$topic</h2>\n";
+
+        my $topic_content = `$VIEW_COMMAND -topic $CMP_WEB.$topic`;
+        my $topic_tree = HTML::TreeBuilder->new_from_content($topic_content);
+        my $content_div = $topic_tree->look_down( id => 'patternMainContents',
+                                                  _tag => 'div' );
+        next if !$content_div;
+        my $status_heading = $content_div->look_down( $status_sub );
+        next if !$status_heading;
+        print "<p>\n", map { ref $_ ? $_->as_trimmed_text() : $_ }
+                           $status_heading->right();
+        print "</p>\n";
+    }
+
+    print join "\n", $body_node->endtag(), $html_node->endtag(), q{};
+}
